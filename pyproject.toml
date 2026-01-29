@@ -1,0 +1,14 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+markers = [
+  "smoke: fast validation tests (run on every CI build)",
+  "e2e: end-to-end UI tests (slower, run nightly or on demand)"
+]
+
+addopts = [
+  "-q",
+  "--junitxml=reports/junit.xml",
+  "--html=reports/report.html",
+  "--self-contained-html"
+]
