@@ -27,6 +27,11 @@ pipeline {
       choices: ['smoke', 'e2e', 'all'],
       description: 'Which test suite to run'
     )
+    booleanParam(
+      name: 'DEBUG',
+      defaultValue: false,
+      description: 'Print extra debug info (pwd/ls) from inside the container'
+    )
   }
 
   stages {
@@ -43,56 +48,44 @@ pipeline {
 
     stage('Run tests (Docker)') {
       steps {
-        sh '''
-          set -e
+        script {
+          def pytestArgs = (params.SUITE == 'all')
+            ? "--browser ${params.BROWSER} --slowmo ${params.SLOWMO}"
+            : "-m ${params.SUITE} --browser ${params.BROWSER} --slowmo ${params.SLOWMO}"
 
-          mkdir -p reports artifacts
-
-          if [ "${SUITE}" = "all" ]; then
-            PYTEST_ARGS="--browser ${BROWSER} --slowmo ${SLOWMO}"
-          else
-            PYTEST_ARGS="-m ${SUITE} --browser ${BROWSER} --slowmo ${SLOWMO}"
-          fi
-
-          # PW_TRACE is a Jenkins booleanParam; in shell it appears as "true"/"false"
-          if [ "${PW_TRACE}" = "true" ]; then
-            export PW_TRACE=1
-          else
-            unset PW_TRACE || true
-          fi
-          echo '--- on jenkins agent: pwd ---'
-          pwd
-          echo '--- on jenkins agent: ls -la ---'
-          ls -la
-          docker run --rm \
-            -e PW_TRACE="${PW_TRACE:-}" \
-            -v "/workspace/python-playwright-framework:/work" \
-            -w /work \
-            mcr.microsoft.com/playwright/python:v1.50.0-jammy \
-            bash -lc "
-              echo '--- inside container: pwd ---'
-              pwd
-              echo '--- inside container: ls -la ---'
-              ls -la
-              echo '--- inside container: find requirements ---'
-              find . -maxdepth 3 -iname 'requirements*.txt' -print
-              echo '--- python version ---'
+          // Pull/run inside Playwright Python image; Docker Pipeline will mount Jenkins workspace automatically
+          docker.image('mcr.microsoft.com/playwright/python:v1.50.0-jammy').inside {
+            sh '''
+              set -e
+              mkdir -p reports artifacts
               python --version
-              echo '--- installing ---'
               pip install -U pip
               pip install -r requirements.txt
-              pytest ${PYTEST_ARGS}
-            "
-        '''
+            '''
+
+            if (params.DEBUG) {
+              sh '''
+                echo "--- inside container debug ---"
+                pwd
+                ls -la
+              '''
+            }
+
+            if (params.PW_TRACE) {
+              sh "PW_TRACE=1 pytest ${pytestArgs}"
+            } else {
+              sh "pytest ${pytestArgs}"
+            }
+          }
+        }
       }
     }
   }
 
-post {
-  always {
-    junit allowEmptyResults: true, testResults: '/workspace/python-playwright-framework/reports/junit.xml'
-    archiveArtifacts allowEmptyArchive: true, artifacts: '/workspace/python-playwright-framework/reports/**/*, /workspace/python-playwright-framework/artifacts/**/*'
+  post {
+    always {
+      junit allowEmptyResults: true, testResults: 'reports/junit.xml'
+      archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/**/*, artifacts/**/*'
+    }
   }
-}
-
 }
