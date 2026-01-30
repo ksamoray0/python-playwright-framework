@@ -72,9 +72,10 @@ pipeline {
             }
 
             if (params.PW_TRACE) {
-              sh "PW_TRACE=1 pytest ${pytestArgs}"
+              sh "PW_TRACE=1 python -m pytest ${pytestArgs}"
             } else {
-              sh "pytest ${pytestArgs}"
+              sh "python -m pytest ${pytestArgs}"
+
             }
           }
         }
