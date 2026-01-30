@@ -60,17 +60,28 @@ pipeline {
           else
             unset PW_TRACE || true
           fi
-
+          echo '--- on jenkins agent: pwd ---'
+          pwd
+          echo '--- on jenkins agent: ls -la ---'
+          ls -la
           docker run --rm \
             -e PW_TRACE="${PW_TRACE:-}" \
             -v "$PWD:/work" \
             -w /work \
             mcr.microsoft.com/playwright/python:v1.50.0-jammy \
             bash -lc "
+              echo '--- inside container: pwd ---'
+              pwd
+              echo '--- inside container: ls -la ---'
+              ls -la
+              echo '--- inside container: find requirements ---'
+              find . -maxdepth 3 -iname 'requirements*.txt' -print
+              echo '--- python version ---'
               python --version
+              echo '--- installing ---'
               pip install -U pip
               pip install -r requirements.txt
-              pytest -q ${PYTEST_ARGS} --junitxml=reports/junit.xml
+              pytest ${PYTEST_ARGS}
             "
         '''
       }
