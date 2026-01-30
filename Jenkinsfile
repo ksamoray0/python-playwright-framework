@@ -30,97 +30,52 @@ pipeline {
   }
 
   stages {
-
     stage('Environment check') {
       steps {
-        script {
-          if (isUnix()) {
-            sh '''
-              echo "Running on Linux agent"
-              which python3 || (echo "ERROR: python3 not found on agent" && exit 1)
-              python3 --version
-            '''
-          } else {
-            powershell '''
-              Write-Host "Running on Windows agent"
-              where python || (Write-Error "Python not found on agent"; exit 1)
-              python --version
-            '''
-          }
-        }
+        sh '''
+          set -e
+          echo "Running on Linux agent (Jenkins container)"
+          docker --version
+          docker ps >/dev/null
+        '''
       }
     }
 
-    stage('Setup venv') {
+    stage('Run tests (Docker)') {
       steps {
-        script {
-          if (isUnix()) {
-            sh '''
-              set -e
-              python3 -m venv .venv
-              . .venv/bin/activate
-              python -m pip install --upgrade pip
-              python -m pip install pytest pytest-html playwright pytest-xdist
-              python -m playwright install
-            '''
-          } else {
-            powershell '''
-              $ErrorActionPreference = "Stop"
+        sh '''
+          set -e
 
-              python -m venv .venv
-              .\\.venv\\Scripts\\Activate.ps1
+          mkdir -p reports artifacts
 
-              python -m pip install --upgrade pip
-              python -m pip install pytest pytest-html playwright pytest-xdist
-              python -m playwright install
-            '''
-          }
-        }
+          if [ "${SUITE}" = "all" ]; then
+            PYTEST_ARGS="--browser ${BROWSER} --slowmo ${SLOWMO}"
+          else
+            PYTEST_ARGS="-m ${SUITE} --browser ${BROWSER} --slowmo ${SLOWMO}"
+          fi
+
+          # PW_TRACE is a Jenkins booleanParam; in shell it appears as "true"/"false"
+          if [ "${PW_TRACE}" = "true" ]; then
+            export PW_TRACE=1
+          else
+            unset PW_TRACE || true
+          fi
+
+          docker run --rm \
+            -e PW_TRACE="${PW_TRACE:-}" \
+            -v "$PWD:/work" \
+            -w /work \
+            mcr.microsoft.com/playwright/python:v1.50.0-jammy \
+            bash -lc "
+              python --version
+              pip install -U pip
+              pip install -r requirements.txt
+              pytest -q ${PYTEST_ARGS} --junitxml=reports/junit.xml
+            "
+        '''
       }
     }
-
-stage('Run tests (Docker)') {
-  steps {
-    sh '''
-      set -e
-
-      mkdir -p reports artifacts
-
-      # Build command for pytest suite selection
-      if [ "${SUITE}" = "all" ]; then
-        PYTEST_ARGS="--browser ${BROWSER} --slowmo ${SLOWMO}"
-      else
-        PYTEST_ARGS="-m ${SUITE} --browser ${BROWSER} --slowmo ${SLOWMO}"
-      fi
-
-      # Trace toggle
-      if [ "${PW_TRACE}" = "true" ]; then
-        export PW_TRACE=1
-      else
-        unset PW_TRACE || true
-      fi
-
-      docker run --rm \
-        -e BROWSER="${BROWSER}" \
-        -e SLOWMO="${SLOWMO}" \
-        -e SUITE="${SUITE}" \
-        -e PW_TRACE="${PW_TRACE}" \
-        -e PW_TRACE=1 \
-        -v "$PWD:/work" \
-        -w /work \
-        mcr.microsoft.com/playwright/python:v1.50.0-jammy \
-        bash -lc "
-          python --version
-          pip install -U pip
-          pip install -r requirements.txt
-          pytest -q ${PYTEST_ARGS} --junitxml=reports/junit.xml
-        "
-    '''
   }
-}
-
-
-  } // end stages
 
   post {
     always {
