@@ -66,7 +66,7 @@ pipeline {
           ls -la
           docker run --rm \
             -e PW_TRACE="${PW_TRACE:-}" \
-            -v "$PWD:/work" \
+            -v "/workspace/python-playwright-framework:/work" \
             -w /work \
             mcr.microsoft.com/playwright/python:v1.50.0-jammy \
             bash -lc "
@@ -88,10 +88,11 @@ pipeline {
     }
   }
 
-  post {
-    always {
-      junit allowEmptyResults: true, testResults: 'reports/junit.xml'
-      archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/**/*, artifacts/**/*'
-    }
+post {
+  always {
+    junit allowEmptyResults: true, testResults: '/workspace/python-playwright-framework/reports/junit.xml'
+    archiveArtifacts allowEmptyArchive: true, artifacts: '/workspace/python-playwright-framework/reports/**/*, /workspace/python-playwright-framework/artifacts/**/*'
   }
+}
+
 }
