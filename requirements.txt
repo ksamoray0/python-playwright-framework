@@ -1,4 +1,6 @@
-pytest
-pytest-xdist
-pytest-html
-pytest-playwright
+pytest==9.0.2
+pytest-xdist==3.8.0
+pytest-html==4.2.0
+pytest-playwright==0.7.2
+playwright==1.58.0
+

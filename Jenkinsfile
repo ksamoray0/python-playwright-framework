@@ -49,34 +49,28 @@ pipeline {
     stage('Run tests (Docker)') {
       steps {
         script {
-          def pytestArgs = (params.SUITE == 'all')
-            ? "--browser ${params.BROWSER} --slowmo ${params.SLOWMO}"
-            : "-m ${params.SUITE} --browser ${params.BROWSER} --slowmo ${params.SLOWMO}"
+          def suiteArgs = (params.SUITE == 'all')
+            ? ""
+            : "-m ${params.SUITE}"
 
-          // Pull/run inside Playwright Python image; Docker Pipeline will mount Jenkins workspace automatically
-          docker.image('mcr.microsoft.com/playwright/python:v1.50.0-jammy').inside {
-            sh '''
+          def pytestArgs = "${suiteArgs} --browser ${params.BROWSER} --slowmo ${params.SLOWMO}"
+
+          def traceEnv = params.PW_TRACE ? "PW_TRACE=1" : "PW_TRACE=0"
+
+          docker.image('mcr.microsoft.com/playwright/python:v1.58.0-jammy').inside {
+            sh """
               set -e
               mkdir -p reports artifacts
+
+              echo '--- python ---'
               python --version
-              pip install -U pip
-              pip install -r requirements.txt
-            '''
 
-            if (params.DEBUG) {
-              sh '''
-                echo "--- inside container debug ---"
-                pwd
-                ls -la
-              '''
-            }
+              echo '--- install deps ---'
+              python -m pip install -r requirements.txt
 
-            if (params.PW_TRACE) {
-              sh "PW_TRACE=1 python -m pytest ${pytestArgs}"
-            } else {
-              sh "python -m pytest ${pytestArgs}"
-
-            }
+              echo '--- run tests ---'
+              ${traceEnv} python -m pytest ${pytestArgs} --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
+            """
           }
         }
       }
