@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional
 
 import pytest
-from playwright.sync_api import sync_playwright
 
 try:
     import pytest_html
@@ -20,23 +19,15 @@ def _bool_env(name: str, default: bool = False) -> bool:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
+    # Do NOT define --browser/--headed/--slowmo here.
+    # pytest-playwright already defines those, and adding them causes argparse conflicts.
+    #
+    # Keep only truly custom options.
     parser.addoption(
-        "--headed",
+        "--pw-trace",
         action="store_true",
         default=False,
-        help="Run browser in headed mode",
-    )
-    parser.addoption(
-        "--browser",
-        action="store",
-        default="chromium",
-        help="chromium | firefox | webkit",
-    )
-    parser.addoption(
-        "--slowmo",
-        action="store",
-        default="0",
-        help="Slow down Playwright actions (ms)",
+        help="Enable Playwright tracing (also enabled via PW_TRACE=1 env var)",
     )
 
 
@@ -47,57 +38,6 @@ def artifacts_dir() -> Path:
     path = root / "artifacts"
     path.mkdir(parents=True, exist_ok=True)
     return path
-
-
-@pytest.fixture(scope="session")
-def browser_name(pytestconfig: pytest.Config) -> str:
-    return str(pytestconfig.getoption("--browser")).strip().lower()
-
-
-@pytest.fixture(scope="session")
-def headed(pytestconfig: pytest.Config) -> bool:
-    return bool(pytestconfig.getoption("--headed"))
-
-
-@pytest.fixture(scope="session")
-def slowmo(pytestconfig: pytest.Config) -> int:
-    try:
-        return int(pytestconfig.getoption("--slowmo"))
-    except ValueError:
-        return 0
-
-
-@pytest.fixture(scope="session")
-def playwright():
-    with sync_playwright() as p:
-        yield p
-
-
-@pytest.fixture(scope="session")
-def browser(playwright, browser_name: str, headed: bool, slowmo: int):
-    browser_type = getattr(playwright, browser_name, None)
-    if browser_type is None:
-        raise ValueError(
-            f"Unsupported browser '{browser_name}'. Use chromium, firefox, or webkit."
-        )
-
-    b = browser_type.launch(headless=not headed, slow_mo=slowmo)
-    yield b
-    b.close()
-
-
-@pytest.fixture(scope="function")
-def context(browser):
-    ctx = browser.new_context()
-    yield ctx
-    ctx.close()
-
-
-@pytest.fixture(scope="function")
-def page(context):
-    p = context.new_page()
-    yield p
-    p.close()
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -125,7 +65,6 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
 
     screenshot_path = artifacts.get("screenshot")
     if screenshot_path and Path(screenshot_path).exists():
-        # report.html is in reports/, artifacts/ is at repo root
         rel = f"../artifacts/screenshots/{Path(screenshot_path).name}"
         extra.append(pytest_html.extras.url(rel, name="Screenshot"))
 
@@ -141,7 +80,12 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
 def capture_artifacts_on_failure(
     request: pytest.FixtureRequest, page, artifacts_dir: Path
 ):
-    trace_enabled = _bool_env("PW_TRACE", default=False)
+    # Enable trace if either:
+    # - env var PW_TRACE is truthy, OR
+    # - user passes --pw-trace
+    trace_enabled = _bool_env("PW_TRACE", default=False) or bool(
+        request.config.getoption("--pw-trace")
+    )
 
     # Start tracing when enabled, but only SAVE it on failure
     if trace_enabled:
@@ -183,7 +127,6 @@ def capture_artifacts_on_failure(
         except Exception:
             trace_path = None
 
-    # Store artifact paths on the node so the report hook can attach them
     artifacts = getattr(request.node, "_artifacts", {})
     if screenshot_file is not None:
         artifacts["screenshot"] = str(screenshot_file)
