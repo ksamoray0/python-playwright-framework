@@ -154,6 +154,29 @@ pre-commit run --all-files
 After setup, hooks run automatically on every git commit.
 If a hook modifies files or fails, re-stage the changes and commit again.
 
+
+## Jenkins Pipeline Parameters
+
+| Parameter  | Description |
+|-----------|------------|
+| BROWSER   | Playwright browser engine (`chromium`, `firefox`, `webkit`) |
+| SUITE     | Test suite to execute (`smoke`, `e2e`, `all`) |
+| PW_TRACE  | Enable Playwright tracing on failure |
+| SLOWMO    | Slow down Playwright actions (milliseconds) |
+
+### Local Execution
+
+```
+pytest -m smoke
+
+BROWSER=chromium PW_TRACE=true pytest -m e2e
+```
+### Jenkins Execution
+
+Tests are executed via Jenkins parameterized builds using the provided `Jenkinsfile`.  
+Artifacts such as Playwright traces and test reports are automatically archived.
+
+
 ## Notes
 
 - All paths are resolved relative to the repository root

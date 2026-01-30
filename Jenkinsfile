@@ -79,50 +79,46 @@ pipeline {
       }
     }
 
-    stage('Run tests') {
-      steps {
-        script {
-          if (isUnix()) {
-            sh '''
-              set -e
-              . .venv/bin/activate
+stage('Run tests (Docker)') {
+  steps {
+    sh '''
+      set -e
 
-              if [ "${PW_TRACE}" = "true" ]; then
-                export PW_TRACE=1
-              else
-                unset PW_TRACE || true
-              fi
+      mkdir -p reports artifacts
 
-              if [ "${SUITE}" = "all" ]; then
-                python -m pytest --browser ${BROWSER} --slowmo ${SLOWMO}
-              else
-                python -m pytest -m ${SUITE} --browser ${BROWSER} --slowmo ${SLOWMO}
-              fi
-            '''
-          } else {
-            powershell '''
-              $ErrorActionPreference = "Stop"
+      # Build command for pytest suite selection
+      if [ "${SUITE}" = "all" ]; then
+        PYTEST_ARGS="--browser ${BROWSER} --slowmo ${SLOWMO}"
+      else
+        PYTEST_ARGS="-m ${SUITE} --browser ${BROWSER} --slowmo ${SLOWMO}"
+      fi
 
-              .\\.venv\\Scripts\\Activate.ps1
+      # Trace toggle
+      if [ "${PW_TRACE}" = "true" ]; then
+        export PW_TRACE=1
+      else
+        unset PW_TRACE || true
+      fi
 
-              if ("${env:PW_TRACE}" -eq "true") {
-                $env:PW_TRACE = "1"
-              } else {
-                Remove-Item Env:PW_TRACE -ErrorAction SilentlyContinue
-              }
+      docker run --rm \
+        -e BROWSER="${BROWSER}" \
+        -e SLOWMO="${SLOWMO}" \
+        -e SUITE="${SUITE}" \
+        -e PW_TRACE="${PW_TRACE}" \
+        -e PW_TRACE=1 \
+        -v "$PWD:/work" \
+        -w /work \
+        mcr.microsoft.com/playwright/python:v1.50.0-jammy \
+        bash -lc "
+          python --version
+          pip install -U pip
+          pip install -r requirements.txt
+          pytest -q ${PYTEST_ARGS} --junitxml=reports/junit.xml
+        "
+    '''
+  }
+}
 
-              $args = @("--browser", "${env:BROWSER}", "--slowmo", "${env:SLOWMO}")
-
-              if ("${env:SUITE}" -ne "all") {
-                $args += @("-m", "${env:SUITE}")
-              }
-
-              python -m pytest @args
-            '''
-          }
-        }
-      }
-    }
 
   } // end stages
 
