@@ -68,8 +68,7 @@ pipeline {
               echo '--- install deps ---'
               export PIP_DISABLE_PIP_VERSION_CHECK=1
               export PATH="/home/pwuser/.local/bin:$PATH"
-              python -m pip install --cache-dir /var/jenkins_home/.cache/pip -r requirements.txt
-
+              python -m pip install --cache-dir .pip-cache -r requirements.txt
 
               echo '--- run tests ---'
               ${traceEnv} python -m pytest ${pytestArgs} --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
