@@ -36,7 +36,7 @@ pipeline {
 
   environment {
     PW_IMAGE = 'mcr.microsoft.com/playwright/python:v1.58.0-jammy'
-    PIP_CACHE_DIR = "${WORKSPACE}/.pip-cache"
+    PIP_CACHE_DIR = '.pip-cache'
   }
 
   stages {
@@ -54,39 +54,47 @@ pipeline {
     stage('Run tests (Docker)') {
       steps {
         script {
-          def suiteArgs = (params.SUITE == 'all')
-            ? ""
-            : "-m ${params.SUITE}"
-
+          def suiteArgs = (params.SUITE == 'all') ? '' : "-m ${params.SUITE}"
           def pytestArgs = "${suiteArgs} --browser ${params.BROWSER} --slowmo ${params.SLOWMO}"
+          def traceEnv = params.PW_TRACE ? 'PW_TRACE=1' : 'PW_TRACE=0'
 
-          def traceEnv = params.PW_TRACE ? "PW_TRACE=1" : "PW_TRACE=0"
+          // Pull only if missing (silent)
+          sh """
+            set -e
+            docker image inspect ${env.PW_IMAGE} >/dev/null 2>&1 || docker pull ${env.PW_IMAGE}
+          """
 
-            // Ensure image exists (silent)
-            sh """
-              set -e
-              docker image inspect ${env.PW_IMAGE} >/dev/null 2>&1 || docker pull ${env.PW_IMAGE}
-            """
+          sh """
+            set -e
+            mkdir -p reports artifacts ${env.PIP_CACHE_DIR}
 
-          docker.image(env.PW_IMAGE).inside {
-            sh """
-              set -e
-              mkdir -p reports artifacts
+            docker run --rm \\
+              -u 1000:1000 \\
+              -w /work \\
+              -e ${traceEnv} \\
+              -e PIP_DISABLE_PIP_VERSION_CHECK=1 \\
+              -e PIP_CACHE_DIR=/work/${env.PIP_CACHE_DIR} \\
+              -v "\$PWD:/work" \\
+              ${env.PW_IMAGE} \\
+              bash -lc '
+                if [ "${params.DEBUG}" = "true" ]; then
+                  echo "--- debug ---"
+                  pwd
+                  ls -la
+                  echo "--- debug end ---"
+                fi
 
-              ${params.DEBUG ? 'echo "--- debug ---"; pwd; ls -la; echo "--- debug end ---"' : ''}
+                echo "--- python ---"
+                python --version
 
-              echo '--- python ---'
-              python --version
+                echo "--- install deps ---"
+                export PATH="/home/pwuser/.local/bin:\$PATH"
+                python -m pip install --user -r requirements.txt
 
-              echo '--- install deps ---'
-              export PIP_DISABLE_PIP_VERSION_CHECK=1
-              export PATH="/home/pwuser/.local/bin:$PATH"
-              python -m pip install --cache-dir "${env.PIP_CACHE_DIR}" --user -r requirements.txt
-
-              echo '--- run tests ---'
-              ${traceEnv} python -m pytest ${pytestArgs} --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
-            """
-          }
+                echo "--- run tests ---"
+                python -m pytest ${pytestArgs} --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
+              '
+          """
         }
       }
     }
@@ -95,7 +103,7 @@ pipeline {
   post {
     always {
       junit allowEmptyResults: true, testResults: 'reports/junit.xml'
-      archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/**/*, artifacts/**/*, .pip-cache/**/*'
+      archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/**/*, artifacts/**/*'
     }
   }
 }
