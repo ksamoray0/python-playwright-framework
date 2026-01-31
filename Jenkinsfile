@@ -57,17 +57,16 @@ pipeline {
         script {
           def suiteArgs = (params.SUITE == 'all') ? '' : "-m ${params.SUITE}"
           def pytestArgs = "${suiteArgs} --browser ${params.BROWSER} --slowmo ${params.SLOWMO}"
-          def traceEnv = params.PW_TRACE ? 'PW_TRACE=1' : 'PW_TRACE=0'
+          def traceValue = params.PW_TRACE ? '1' : '0'
+          def debugValue = params.DEBUG ? 'true' : 'false'
 
-          // Detect the current Jenkins container id (works for Docker-in-Docker style setups)
+          // Detect Jenkins container id (DinD-style)
           def jenkinsCid = sh(
             returnStdout: true,
             script: '''
               set -e
-              # common: /docker/<id>
               CID="$(cat /proc/1/cpuset 2>/dev/null | sed -n 's#.*/docker/\\([0-9a-f]\\{12,64\\}\\).*#\\1#p')"
               if [ -z "$CID" ]; then
-                # fallback
                 CID="$(hostname | tr -d '\\n')"
               fi
               echo "$CID"
@@ -77,27 +76,25 @@ pipeline {
           sh """
             set -e
 
-            # Ensure cache dir exists (inside Jenkins container filesystem)
             mkdir -p "${PIP_CACHE_DIR}"
             chmod -R a+rwx "${PIP_CACHE_DIR}" || true
 
-            # Pull only if missing (keeps output clean)
-            docker image inspect ${env.PW_IMAGE} >/dev/null 2>&1 || docker pull ${env.PW_IMAGE}
+            docker image inspect "${env.PW_IMAGE}" >/dev/null 2>&1 || docker pull "${env.PW_IMAGE}"
 
-            # Run Playwright container sharing Jenkins container volumes (workspace + jenkins_home)
             docker run --rm \\
-              --volumes-from ${jenkinsCid} \\
+              --volumes-from "${jenkinsCid}" \\
               -u 1000:1000 \\
               -w "${WORKSPACE}" \\
-              -e ${traceEnv} \\
+              -e PW_TRACE="${traceValue}" \\
+              -e DEBUG="${debugValue}" \\
               -e PIP_DISABLE_PIP_VERSION_CHECK=1 \\
               -e PIP_CACHE_DIR="${PIP_CACHE_DIR}" \\
-              ${env.PW_IMAGE} \\
+              "${env.PW_IMAGE}" \\
               bash -lc '
                 set -e
                 mkdir -p reports artifacts
 
-                if [ "${params.DEBUG}" = "true" ]; then
+                if [ "${DEBUG}" = "true" ]; then
                   echo "--- debug ---"
                   pwd
                   ls -la
@@ -109,7 +106,8 @@ pipeline {
 
                 echo "--- install deps ---"
                 export PATH="/home/pwuser/.local/bin:$PATH"
-                python -m pip install --user -r requirements.txt
+                export PIP_CACHE_DIR="${PIP_CACHE_DIR}"
+                python -m pip install --cache-dir "${PIP_CACHE_DIR}" --user -r requirements.txt
 
                 echo "--- run tests ---"
                 python -m pytest ${pytestArgs} --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
