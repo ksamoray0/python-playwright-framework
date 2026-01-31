@@ -36,7 +36,8 @@ pipeline {
 
   environment {
     PW_IMAGE = 'mcr.microsoft.com/playwright/python:v1.58.0-jammy'
-    PIP_CACHE_DIR = '.pip-cache'
+    // persistent cache location in Jenkins home (shared via volumes-from)
+    PIP_CACHE_DIR = '/var/jenkins_home/.cache/pip'
   }
 
   stages {
@@ -58,25 +59,44 @@ pipeline {
           def pytestArgs = "${suiteArgs} --browser ${params.BROWSER} --slowmo ${params.SLOWMO}"
           def traceEnv = params.PW_TRACE ? 'PW_TRACE=1' : 'PW_TRACE=0'
 
-          // Pull only if missing (silent)
+          // Detect the current Jenkins container id (works for Docker-in-Docker style setups)
+          def jenkinsCid = sh(
+            returnStdout: true,
+            script: '''
+              set -e
+              # common: /docker/<id>
+              CID="$(cat /proc/1/cpuset 2>/dev/null | sed -n 's#.*/docker/\\([0-9a-f]\\{12,64\\}\\).*#\\1#p')"
+              if [ -z "$CID" ]; then
+                # fallback
+                CID="$(hostname | tr -d '\\n')"
+              fi
+              echo "$CID"
+            '''
+          ).trim()
+
           sh """
             set -e
+
+            # Ensure cache dir exists (inside Jenkins container filesystem)
+            mkdir -p "${PIP_CACHE_DIR}"
+            chmod -R a+rwx "${PIP_CACHE_DIR}" || true
+
+            # Pull only if missing (keeps output clean)
             docker image inspect ${env.PW_IMAGE} >/dev/null 2>&1 || docker pull ${env.PW_IMAGE}
-          """
 
-          sh """
-            set -e
-            mkdir -p reports artifacts ${env.PIP_CACHE_DIR}
-
+            # Run Playwright container sharing Jenkins container volumes (workspace + jenkins_home)
             docker run --rm \\
+              --volumes-from ${jenkinsCid} \\
               -u 1000:1000 \\
-              -w /work \\
+              -w "${WORKSPACE}" \\
               -e ${traceEnv} \\
               -e PIP_DISABLE_PIP_VERSION_CHECK=1 \\
-              -e PIP_CACHE_DIR=/work/${env.PIP_CACHE_DIR} \\
-              -v "\$PWD:/work" \\
+              -e PIP_CACHE_DIR="${PIP_CACHE_DIR}" \\
               ${env.PW_IMAGE} \\
               bash -lc '
+                set -e
+                mkdir -p reports artifacts
+
                 if [ "${params.DEBUG}" = "true" ]; then
                   echo "--- debug ---"
                   pwd
@@ -88,7 +108,7 @@ pipeline {
                 python --version
 
                 echo "--- install deps ---"
-                export PATH="/home/pwuser/.local/bin:\$PATH"
+                export PATH="/home/pwuser/.local/bin:$PATH"
                 python -m pip install --user -r requirements.txt
 
                 echo "--- run tests ---"
