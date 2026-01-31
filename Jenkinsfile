@@ -36,7 +36,6 @@ pipeline {
 
   environment {
     PW_IMAGE = 'mcr.microsoft.com/playwright/python:v1.58.0-jammy'
-    // persistent cache location in Jenkins home (shared via volumes-from)
     PIP_CACHE_DIR = '/var/jenkins_home/.cache/pip'
   }
 
@@ -87,6 +86,7 @@ pipeline {
               -w "${WORKSPACE}" \\
               -e PW_TRACE="${traceValue}" \\
               -e DEBUG="${debugValue}" \\
+              -e PYTEST_ARGS="${pytestArgs}" \\
               -e PIP_DISABLE_PIP_VERSION_CHECK=1 \\
               -e PIP_CACHE_DIR="${PIP_CACHE_DIR}" \\
               "${env.PW_IMAGE}" \\
@@ -94,7 +94,7 @@ pipeline {
                 set -e
                 mkdir -p reports artifacts
 
-                if [ "${DEBUG}" = "true" ]; then
+                if [ "$DEBUG" = "true" ]; then
                   echo "--- debug ---"
                   pwd
                   ls -la
@@ -106,11 +106,10 @@ pipeline {
 
                 echo "--- install deps ---"
                 export PATH="/home/pwuser/.local/bin:$PATH"
-                export PIP_CACHE_DIR="${PIP_CACHE_DIR}"
-                python -m pip install --cache-dir "${PIP_CACHE_DIR}" --user -r requirements.txt
+                python -m pip install --cache-dir "$PIP_CACHE_DIR" --user -r requirements.txt
 
                 echo "--- run tests ---"
-                python -m pytest ${pytestArgs} --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
+                python -m pytest $PYTEST_ARGS --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
               '
           """
         }
