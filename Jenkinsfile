@@ -62,11 +62,11 @@ pipeline {
 
           def traceEnv = params.PW_TRACE ? "PW_TRACE=1" : "PW_TRACE=0"
 
-          // Ensure image exists (avoid noise and makes failures clearer)
-          sh """
-            set -e
-            docker inspect -f . ${env.PW_IMAGE} >/dev/null 2>&1 || docker pull ${env.PW_IMAGE}
-          """
+            // Ensure image exists (silent)
+            sh """
+              set -e
+              docker image inspect ${env.PW_IMAGE} >/dev/null 2>&1 || docker pull ${env.PW_IMAGE}
+            """
 
           docker.image(env.PW_IMAGE).inside {
             sh """
