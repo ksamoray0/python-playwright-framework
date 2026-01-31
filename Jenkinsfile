@@ -93,7 +93,7 @@ pipeline {
                 set -e
                 mkdir -p reports artifacts
 
-                if [ "$DEBUG" = "true" ]; then
+                if [ "\$DEBUG" = "true" ]; then
                   echo "--- debug ---"
                   pwd
                   ls -la
@@ -104,11 +104,11 @@ pipeline {
                 python --version
 
                 echo "--- install deps ---"
-                export PATH="/home/pwuser/.local/bin:$PATH"
-                python -m pip install --cache-dir "$PIP_CACHE_DIR" --user -r requirements.txt
+                export PATH="/home/pwuser/.local/bin:\$PATH"
+                python -m pip install --cache-dir "\$PIP_CACHE_DIR" --user -r requirements.txt
 
                 echo "--- run tests ---"
-                python -m pytest $PYTEST_ARGS --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
+                python -m pytest \$PYTEST_ARGS --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html
               '
           """
         }
