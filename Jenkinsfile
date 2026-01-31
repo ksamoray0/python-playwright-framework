@@ -66,6 +66,8 @@ pipeline {
               python --version
 
               echo '--- install deps ---'
+              export PIP_DISABLE_PIP_VERSION_CHECK=1
+              export PATH="$HOME/.local/bin:$PATH"
               python -m pip install -r requirements.txt
 
               echo '--- run tests ---'
