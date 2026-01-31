@@ -59,7 +59,6 @@ pipeline {
           def traceValue = params.PW_TRACE ? '1' : '0'
           def debugValue = params.DEBUG ? 'true' : 'false'
 
-          // Detect Jenkins container id (DinD-style)
           def jenkinsCid = sh(
             returnStdout: true,
             script: '''
