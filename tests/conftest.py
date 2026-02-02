@@ -40,6 +40,12 @@ def artifacts_dir() -> Path:
     return path
 
 
+@pytest.fixture(scope="session")
+def base_url() -> str:
+    # Default base URL for this project
+    return os.getenv("BASE_URL", "https://automationintesting.online")
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     outcome = yield
